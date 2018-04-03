@@ -53,6 +53,22 @@ func TestJSONReader(t *testing.T) {
 			Format: dataset.JSONDataFormat,
 			Schema: dataset.BaseSchemaObject,
 		}, 1, ""},
+		{"error_comma_separator", &dataset.Structure{
+			Format: dataset.JSONDataFormat,
+			Schema: dataset.BaseSchemaObject,
+		}, 1, "invalid character '\"'  after object key:value pair"},
+		{"error_close_object", &dataset.Structure{
+			Format: dataset.JSONDataFormat,
+			Schema: dataset.BaseSchemaObject,
+		}, 1, "did not find closing '}'"},
+		{"error_close_array", &dataset.Structure{
+			Format: dataset.JSONDataFormat,
+			Schema: dataset.BaseSchemaArray,
+		}, 1, "did not find closing ']'"},
+		{"error_key_colon_value", &dataset.Structure{
+			Format: dataset.JSONDataFormat,
+			Schema: dataset.BaseSchemaObject,
+		}, 0, "invalid character '}'  after object key"},
 	}
 
 	for i, c := range cases {
@@ -63,25 +79,46 @@ func TestJSONReader(t *testing.T) {
 		}
 
 		r, err := NewJSONReader(c.structure, tc.DataFile())
-		if !(err == nil && c.err == "" || err != nil && err.Error() == c.err) {
-			t.Errorf("case %d:%s error mismatch. expected: %s. got: %s", i, c.name, c.err, err)
-			continue
-		} else if c.err != "" {
+		if err != nil {
+			if c.err == "" {
+				t.Errorf("case %d:%s unexpected error, got: %s", i, c.name, err)
+			} else if err.Error() != c.err {
+				t.Errorf("case %d:%s error mismatch. expected: %s. got: %s", i, c.name, c.err, err)
+			}
 			continue
 		}
 
+		//!(err == nil && c.err == "" || err != nil && err.Error() == c.err) {
+		//	fmt.Printf("case 0\n")
+		//	t.Errorf("case %d:%s error mismatch. expected: %s. got: %s", i, c.name, c.err, err)
+		//	continue
+		//} else if c.err != "" {
+		//	fmt.Printf("case 1\n")
+		//	continue
+		//}
+
 		if r.Structure() == nil {
+			//fmt.Printf("case 2\n")
 			t.Errorf("nil structure?")
 			return
 		}
 
+		//fmt.Printf("did new JSONReader\n")
+
 		j := 0
 		vs := []Entry{}
+		foundError := false
 		for {
+			//fmt.Printf("JSONReader reading entry\n")
 			// TODO - inspect row output for well formed json
 			ent, err := r.ReadEntry()
+			//fmt.Printf("JSONReader got entry %v %v\n", ent, err)
 			if err != nil {
 				if err.Error() == "EOF" {
+					break
+				} else if err.Error() == c.err {
+					// Expected error was successfully found.
+					foundError = true
 					break
 				}
 				t.Errorf("case %d error reading row %d: %s", i, j, err.Error())
@@ -91,8 +128,12 @@ func TestJSONReader(t *testing.T) {
 			j++
 		}
 
+		if c.err != "" && !foundError {
+			t.Errorf("case %d:%s error expected but not fond: %s", i, c.name, c.err)
+			continue
+		}
 		if c.count != j {
-			t.Errorf("case %d count mismatch. expected: %d, got: %d", i, c.count, j)
+			t.Errorf("case %d:%s count mismatch. expected: %d, got: %d", i, c.name, c.count, j)
 			t.Log(vs)
 			continue
 		}
